@@ -84,6 +84,7 @@ def simulate_fpv_dynamics():
         
         currents.append(i)
         powers_elec.append(p_elec)
+        powers_shaft.append(p_shaft)
         powers_prop.append(p_prop)
         lambdas.append(advance_ratio)
 
@@ -96,6 +97,7 @@ def simulate_fpv_dynamics():
     eq_current = currents[idx]
     eq_eff = efficiencies[idx]
     eq_p_elec = powers_elec[idx]
+    eq_p_shaft = powers_shaft[idx]
     eq_p_prop = powers_prop[idx]
     eq_lambda = lambdas[idx]
 
@@ -107,6 +109,7 @@ def simulate_fpv_dynamics():
     print(f"  Current:        {eq_current:.1f} A")
     print(f"  Motor Eff:      {eq_eff:.1f} %")
     print(f"  P Elec (In):    {eq_p_elec:.1f} W")
+    print(f"  P Shaft (Out):  {eq_p_shaft:.1f} W")
     print(f"  P Prop (Abs):   {eq_p_prop:.1f} W")
     print(f"  Advance Ratio:  {eq_lambda:.3f}")
 
@@ -125,10 +128,11 @@ def simulate_fpv_dynamics():
     ax1.legend()
 
     # 图表 2: 功率对比 (Power Comparison)
-    ax2.plot(rpms, powers_elec, label='P Elec (Input)', color='red', linewidth=2)
+    ax2.plot(rpms, powers_elec, label='P Elec (Input, F4)', color='red', linewidth=2)
+    ax2.plot(rpms, powers_shaft, label='P Shaft (Motor Out, F3)', color='green', linewidth=2, linestyle='--')
     ax2.plot(rpms, powers_prop, label='P Prop (Absorbed)', color='orange', linewidth=2)
     ax2.axvline(eq_rpm, color='black', linestyle='--', alpha=0.3)
-    ax2.set_title('Power vs RPM (Input vs Absorbed)')
+    ax2.set_title('Power vs RPM (Energy Flow)')
     ax2.set_xlabel('RPM')
     ax2.set_ylabel('Power (W)')
     ax2.grid(True, alpha=0.3)

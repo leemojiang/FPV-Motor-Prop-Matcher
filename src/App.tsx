@@ -153,7 +153,8 @@ export default function App() {
         propEff: Number(Math.min(100, propEff).toFixed(1)),
         current: Number(current.toFixed(1)),
         pElec: Number(pElec.toFixed(1)),
-        pShaft: Number(propPower.toFixed(1)),
+        pShaftMotor: Number(pShaftMotor.toFixed(1)),
+        pProp: Number(propPower.toFixed(1)),
         lambda: Number(lambda.toFixed(3)),
       });
     }
@@ -483,9 +484,13 @@ export default function App() {
                 ) : activeTab === 'power' ? (
                   <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <defs>
-                      <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="colorProp" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
                         <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorShaft" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorElec" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
@@ -503,8 +508,9 @@ export default function App() {
                     <YAxis stroke="#666" fontSize={10} label={{ value: 'Power (W)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Legend verticalAlign="top" height={36}/>
-                    <Area type="monotone" dataKey="pElec" name="P Elec (Input)" stroke="#ef4444" fillOpacity={1} fill="url(#colorElec)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="pShaft" name="P Shaft (Prop Absorbed)" stroke="#f59e0b" fillOpacity={1} fill="url(#colorPower)" strokeWidth={3} />
+                    <Area type="monotone" dataKey="pElec" name="P Elec (Input, F4)" stroke="#ef4444" fillOpacity={1} fill="url(#colorElec)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="pShaftMotor" name="P Shaft (Motor Out, F3)" stroke="#10b981" fillOpacity={1} fill="url(#colorShaft)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="pProp" name="P Prop (Absorbed)" stroke="#f59e0b" fillOpacity={1} fill="url(#colorProp)" strokeWidth={3} />
                     <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
                   </AreaChart>
                 ) : activeTab === 'prop_rpm' ? (
