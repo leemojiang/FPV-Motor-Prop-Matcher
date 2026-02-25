@@ -22,11 +22,32 @@
 
 本项目参考了经典的直流电机与螺旋桨匹配理论，核心公式如下：
 
-1.  **电机电流 (Formula 6)**: $i = \frac{v - \Omega/K_v}{R}$
-2.  **电机扭矩 (Formula 1)**: $Q_m = \frac{i - i_o}{K_v}$
-3.  **螺旋桨推力 (Formula 15)**: $T = \frac{1}{2}\rho(\Omega R)^2 \pi R^2 C_T$
-4.  **螺旋桨扭矩 (Formula 16)**: $Q = \frac{1}{2}\rho(\Omega R)^2 \pi R^3 C_P$
-5.  **平衡点 (Formula 17)**: 寻找 $\Omega$ 使得 $Q_m(\Omega, v) = Q(\Omega, V)$
+### 1. 电机模型 (Motor Model)
+- **电流 (Formula 6)**: $i = \frac{v - \Omega/K_v}{R}$
+- **电机扭矩 (Formula 1)**: $Q_m = \frac{i - i_o}{K_v}$
+- **电功率 (Formula 4)**: $P_{elec} = v \cdot i$
+
+### 2. 螺旋桨模型 (Propeller Model)
+螺旋桨的推力和扭矩由无量纲系数 $C_T$ 和 $C_P$ 决定，并受进气比 $\lambda$ 影响：
+- **进气比 (Formula 14)**: $\lambda = \frac{V}{\Omega R}$
+- **推力 (Formula 15)**: $T = \frac{1}{2} \rho (\Omega R)^2 \pi R^2 C_T(\lambda)$
+- **扭矩 (Formula 16)**: $Q = \frac{1}{2} \rho (\Omega R)^2 \pi R^3 C_P(\lambda)$
+- **螺旋桨吸收功率 (Formula 8)**: $P_{prop} = Q \cdot \Omega$
+- **螺旋桨效率 (Propeller Efficiency)**: $\eta_p = \frac{T \cdot V}{P_{prop}}$
+
+> **注**：在本项目中，我们引入了 $Pitch/Diameter$（桨径比）对基础系数的修正，以更真实地模拟不同螺距桨叶的负载差异。
+
+### 3. 匹配与平衡 (Matching)
+- **平衡条件 (Formula 17)**: 寻找 $\Omega$ 使得 $Q_m(\Omega, v) = Q(\Omega, V)$。此时的转速即为实际运行转速。
+
+## 📊 图表说明
+
+- **Torque**: 展示电机输出扭矩与螺旋桨负载扭矩的交点（平衡点）。
+- **Thrust**: 随转速变化的推力输出。
+- **Efficiency**: 电机转换效率（电能转机械能）。
+- **Power**: 同时绘制 **P Elec (输入电功率)** 与 **P Shaft (螺旋桨吸收功率)**，展示能量损耗。
+- **Prop RPM**: 螺旋桨特性随转速的变化（推力、扭矩、螺旋桨效率）。
+- **Prop Lambda**: 螺旋桨特性随进气比 $\lambda$ 的变化，展示螺旋桨在不同飞行速度下的性能包线。
 
 ## 🛠️ 技术栈
 

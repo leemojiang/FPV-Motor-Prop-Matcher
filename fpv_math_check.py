@@ -76,8 +76,16 @@ def simulate_fpv_dynamics():
         prop_torques.append(q_prop)
         thrusts_g.append(thrust_n * 101.97) # N to grams
         efficiencies.append(eff)
+        
+        # (9) Propeller Efficiency: eta_p = (T * V) / P_prop
+        p_prop = q_prop * omega
+        prop_eff = (thrust_n * V_flight / p_prop * 100) if p_prop > 0 else 0
+        prop_efficiencies.append(min(100, prop_eff))
+        
         currents.append(i)
-        powers.append(p_elec)
+        powers_elec.append(p_elec)
+        powers_prop.append(p_prop)
+        lambdas.append(advance_ratio)
 
     # --- 5. 寻找平衡点 (Find Equilibrium Point) ---
     # (17) Qm(Omega, v) = Q(Omega, V)
@@ -87,19 +95,24 @@ def simulate_fpv_dynamics():
     eq_thrust = thrusts_g[idx]
     eq_current = currents[idx]
     eq_eff = efficiencies[idx]
-    eq_power = powers[idx]
+    eq_p_elec = powers_elec[idx]
+    eq_p_prop = powers_prop[idx]
+    eq_lambda = lambdas[idx]
 
     # --- 6. 输出结果 (Output Results) ---
     print(f"--- FPV Dynamics Math Check ---")
     print(f"Operating Point (平衡点):")
-    print(f"  RPM:         {eq_rpm:.0f}")
-    print(f"  Thrust:      {eq_thrust:.1f} g")
-    print(f"  Current:     {eq_current:.1f} A")
-    print(f"  Efficiency:  {eq_eff:.1f} %")
-    print(f"  Power:       {eq_power:.1f} W")
+    print(f"  RPM:            {eq_rpm:.0f}")
+    print(f"  Thrust:         {eq_thrust:.1f} g")
+    print(f"  Current:        {eq_current:.1f} A")
+    print(f"  Motor Eff:      {eq_eff:.1f} %")
+    print(f"  P Elec (In):    {eq_p_elec:.1f} W")
+    print(f"  P Prop (Abs):   {eq_p_prop:.1f} W")
+    print(f"  Advance Ratio:  {eq_lambda:.3f}")
 
     # --- 7. 绘图 (Plotting) ---
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    ((ax1, ax2), (ax3, ax4)) = axes
 
     # 图表 1: 扭矩匹配 (Torque Matching)
     ax1.plot(rpms, motor_torques, label='Motor Torque (Qm)', color='green', linewidth=2)
@@ -111,29 +124,42 @@ def simulate_fpv_dynamics():
     ax1.grid(True, alpha=0.3)
     ax1.legend()
 
-    # 图表 2: 推力与效率 (Thrust & Efficiency)
-    ax2.plot(rpms, thrusts_g, label='Thrust (g)', color='orange', linewidth=2)
-    ax2_eff = ax2.twinx()
-    ax2_eff.plot(rpms, efficiencies, label='Efficiency (%)', color='purple', linestyle=':', linewidth=2)
-    ax2.set_title('Thrust and Efficiency vs RPM')
+    # 图表 2: 功率对比 (Power Comparison)
+    ax2.plot(rpms, powers_elec, label='P Elec (Input)', color='red', linewidth=2)
+    ax2.plot(rpms, powers_prop, label='P Prop (Absorbed)', color='orange', linewidth=2)
+    ax2.axvline(eq_rpm, color='black', linestyle='--', alpha=0.3)
+    ax2.set_title('Power vs RPM (Input vs Absorbed)')
     ax2.set_xlabel('RPM')
-    ax2.set_ylabel('Thrust (g)')
-    ax2_eff.set_ylabel('Efficiency (%)')
+    ax2.set_ylabel('Power (W)')
     ax2.grid(True, alpha=0.3)
-    
-    # 合并图例
-    lines, labels = ax2.get_legend_handles_labels()
-    lines2, labels2 = ax2_eff.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc='upper left')
+    ax2.legend()
 
-    # 图表 3: 功率 (Power)
-    ax3.plot(rpms, powers, label='Power (W)', color='red', linewidth=2)
-    ax3.axvline(eq_rpm, color='black', linestyle='--', alpha=0.3)
-    ax3.set_title('Power vs RPM')
+    # 图表 3: 螺旋桨特性 vs RPM (Propeller Characteristics vs RPM)
+    ax3.plot(rpms, thrusts_g, label='Thrust (g)', color='blue')
+    ax3_eff = ax3.twinx()
+    ax3_eff.plot(rpms, prop_efficiencies, label='Prop Eff (%)', color='purple', linestyle='--')
+    ax3.set_title('Propeller Characteristics vs RPM')
     ax3.set_xlabel('RPM')
-    ax3.set_ylabel('Power (W)')
+    ax3.set_ylabel('Thrust (g)')
+    ax3_eff.set_ylabel('Efficiency (%)')
     ax3.grid(True, alpha=0.3)
-    ax3.legend()
+    ax3.legend(loc='upper left')
+    ax3_eff.legend(loc='upper right')
+
+    # 图表 4: 螺旋桨特性 vs Lambda (Propeller Characteristics vs Lambda)
+    # Filter out very high lambdas for better visualization
+    valid_mask = np.array(lambdas) < (pitch_in/diameter_in * 1.5)
+    ax4.plot(np.array(lambdas)[valid_mask], np.array(thrusts_g)[valid_mask], label='Thrust (g)', color='blue')
+    ax4_eff = ax4.twinx()
+    ax4_eff.plot(np.array(lambdas)[valid_mask], np.array(prop_efficiencies)[valid_mask], label='Prop Eff (%)', color='purple', linestyle='--')
+    ax4.axvline(eq_lambda, color='red', linestyle=':', label=f'Operating λ={eq_lambda:.3f}')
+    ax4.set_title('Propeller Characteristics vs Advance Ratio (λ)')
+    ax4.set_xlabel('Advance Ratio (λ)')
+    ax4.set_ylabel('Thrust (g)')
+    ax4_eff.set_ylabel('Efficiency (%)')
+    ax4.grid(True, alpha=0.3)
+    ax4.legend(loc='upper left')
+    ax4_eff.legend(loc='upper right')
 
     plt.tight_layout()
     plt.show()
