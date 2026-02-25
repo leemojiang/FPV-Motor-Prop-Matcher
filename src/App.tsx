@@ -87,7 +87,7 @@ export default function App() {
   const [motor, setMotor] = useState<MotorParams>(PRESETS.freestyle6s.motor);
   const [prop, setProp] = useState<PropParams>(PRESETS.freestyle6s.prop);
   const [env, setEnv] = useState<EnvironmentParams>(PRESETS.freestyle6s.env);
-  const [activeTab, setActiveTab] = useState<'torque' | 'thrust' | 'efficiency'>('torque');
+  const [activeTab, setActiveTab] = useState<'torque' | 'thrust' | 'efficiency' | 'power'>('torque');
 
   // --- Calculations ---
 
@@ -122,11 +122,16 @@ export default function App() {
       const tipSpeed = omega * propRadius;
       const lambda = omega > 0 ? V / tipSpeed : 0;
       
-      // Simple linear decay model for Ct and Cp based on advance ratio
-      // lambda_0 is roughly pitch/diameter * factor
-      const lambda0 = (prop.pitch / prop.diameter) * 1.2;
-      const ct_eff = Math.max(0, prop.ct * (1 - lambda / lambda0));
-      const cp_eff = Math.max(0, prop.cp * (1 - lambda / lambda0));
+      // Incorporate pitch into the coefficients
+      // pitchRatio = P/D. Higher pitch = higher load and thrust.
+      const pitchRatio = prop.pitch / prop.diameter;
+      const base_ct = prop.ct * pitchRatio;
+      const base_cp = prop.cp * pitchRatio;
+
+      // lambda_0 is roughly pitch/diameter * factor (the advance ratio where thrust goes to zero)
+      const lambda0 = pitchRatio * 1.2;
+      const ct_eff = Math.max(0, base_ct * (1 - lambda / lambda0));
+      const cp_eff = Math.max(0, base_cp * (1 - lambda / lambda0));
 
       const thrust = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * ct_eff;
       const propTorque = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * cp_eff;
@@ -152,8 +157,9 @@ export default function App() {
     const opOmega = rpmToRadS(equilibriumRpm);
     const opTipSpeed = opOmega * propRadius;
     const opLambda = opOmega > 0 ? V / opTipSpeed : 0;
-    const lambda0 = (prop.pitch / prop.diameter) * 1.2;
-    const opCtEff = Math.max(0, prop.ct * (1 - opLambda / lambda0));
+    const pitchRatio = prop.pitch / prop.diameter;
+    const lambda0 = pitchRatio * 1.2;
+    const opCtEff = Math.max(0, (prop.ct * pitchRatio) * (1 - opLambda / lambda0));
     
     const opCurrent = Math.max(0, (v - opOmega / kv_rad) / R);
     const opThrust = 0.5 * rho * Math.pow(opTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * opCtEff;
@@ -359,7 +365,7 @@ export default function App() {
           <div className="bg-zinc-900/50 border border-white/5 rounded-3xl p-8">
             <div className="flex items-center justify-between mb-8">
               <div className="flex gap-4">
-                {(['torque', 'thrust', 'efficiency'] as const).map((tab) => (
+                {(['torque', 'thrust', 'efficiency', 'power'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -402,7 +408,7 @@ export default function App() {
                     <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: 'Equilibrium', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
                   </LineChart>
                 ) : activeTab === 'thrust' ? (
-                  <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <defs>
                       <linearGradient id="colorThrust" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
@@ -410,21 +416,54 @@ export default function App() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                    <XAxis dataKey="rpm" stroke="#666" fontSize={10} tickFormatter={(v) => `${v/1000}k`} />
+                    <XAxis 
+                      dataKey="rpm" 
+                      stroke="#666" 
+                      fontSize={10} 
+                      tickFormatter={(v) => `${v/1000}k`}
+                      label={{ value: 'RPM', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
+                    />
                     <YAxis stroke="#666" fontSize={10} label={{ value: 'Thrust (g)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Area type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" fillOpacity={1} fill="url(#colorThrust)" strokeWidth={3} />
                     <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
                   </AreaChart>
-                ) : (
-                  <LineChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                ) : activeTab === 'efficiency' ? (
+                  <LineChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                    <XAxis dataKey="rpm" stroke="#666" fontSize={10} tickFormatter={(v) => `${v/1000}k`} />
+                    <XAxis 
+                      dataKey="rpm" 
+                      stroke="#666" 
+                      fontSize={10} 
+                      tickFormatter={(v) => `${v/1000}k`}
+                      label={{ value: 'RPM', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
+                    />
                     <YAxis stroke="#666" fontSize={10} label={{ value: 'Efficiency (%)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Line type="monotone" dataKey="efficiency" name="Efficiency (%)" stroke="#a855f7" strokeWidth={3} dot={false} />
                     <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
                   </LineChart>
+                ) : (
+                  <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                    <defs>
+                      <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                    <XAxis 
+                      dataKey="rpm" 
+                      stroke="#666" 
+                      fontSize={10} 
+                      tickFormatter={(v) => `${v/1000}k`}
+                      label={{ value: 'RPM', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
+                    />
+                    <YAxis stroke="#666" fontSize={10} label={{ value: 'Power (W)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
+                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="power" name="Power (W)" stroke="#f59e0b" fillOpacity={1} fill="url(#colorPower)" strokeWidth={3} />
+                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
+                  </AreaChart>
                 )}
               </ResponsiveContainer>
             </div>

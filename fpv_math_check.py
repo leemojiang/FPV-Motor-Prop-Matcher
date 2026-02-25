@@ -33,6 +33,7 @@ def simulate_fpv_dynamics():
     thrusts_g = []
     efficiencies = []
     currents = []
+    powers = []
 
     # --- 4. 核心计算循环 (Core Calculation Loop) ---
     for omega in omegas:
@@ -44,7 +45,7 @@ def simulate_fpv_dynamics():
         
         # (4) Pelec = v * i
         p_elec = v_batt * i
-        # (3) Pshaft = Qm * Omega
+        # (3) Pshaft = Qm * omega
         p_shaft = qm * omega
         # (5) n_m = Pshaft / Pelec
         eff = (p_shaft / p_elec * 100) if p_elec > 0 else 0
@@ -55,10 +56,16 @@ def simulate_fpv_dynamics():
         # (14) lambda = V / (Omega * R)
         advance_ratio = V_flight / tip_speed if tip_speed > 0 else 0
         
-        # 进气比修正 (Advance Ratio Correction - 简化线性模型)
-        lambda0 = (pitch_in / diameter_in) * 1.2
-        ct_eff = max(0, ct_static * (1 - advance_ratio / lambda0))
-        cp_eff = max(0, cp_static * (1 - advance_ratio / lambda0))
+        # 进气比修正与 Pitch 影响
+        # pitchRatio = P/D. 
+        pitch_ratio = pitch_in / diameter_in
+        base_ct = ct_static * pitch_ratio
+        base_cp = cp_static * pitch_ratio
+
+        # lambda_0 is roughly pitch/diameter * factor
+        lambda0 = pitch_ratio * 1.2
+        ct_eff = max(0, base_ct * (1 - advance_ratio / lambda0))
+        cp_eff = max(0, base_cp * (1 - advance_ratio / lambda0))
 
         # (15) T = 0.5 * rho * (Omega * R)^2 * pi * R^2 * Ct
         thrust_n = 0.5 * rho * (tip_speed**2) * np.pi * (prop_radius**2) * ct_eff
@@ -70,6 +77,7 @@ def simulate_fpv_dynamics():
         thrusts_g.append(thrust_n * 101.97) # N to grams
         efficiencies.append(eff)
         currents.append(i)
+        powers.append(p_elec)
 
     # --- 5. 寻找平衡点 (Find Equilibrium Point) ---
     # (17) Qm(Omega, v) = Q(Omega, V)
@@ -79,6 +87,7 @@ def simulate_fpv_dynamics():
     eq_thrust = thrusts_g[idx]
     eq_current = currents[idx]
     eq_eff = efficiencies[idx]
+    eq_power = powers[idx]
 
     # --- 6. 输出结果 (Output Results) ---
     print(f"--- FPV Dynamics Math Check ---")
@@ -87,10 +96,10 @@ def simulate_fpv_dynamics():
     print(f"  Thrust:      {eq_thrust:.1f} g")
     print(f"  Current:     {eq_current:.1f} A")
     print(f"  Efficiency:  {eq_eff:.1f} %")
-    print(f"  Power:       {eq_current * v_batt:.1f} W")
+    print(f"  Power:       {eq_power:.1f} W")
 
     # --- 7. 绘图 (Plotting) ---
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
 
     # 图表 1: 扭矩匹配 (Torque Matching)
     ax1.plot(rpms, motor_torques, label='Motor Torque (Qm)', color='green', linewidth=2)
@@ -116,6 +125,15 @@ def simulate_fpv_dynamics():
     lines, labels = ax2.get_legend_handles_labels()
     lines2, labels2 = ax2_eff.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2, loc='upper left')
+
+    # 图表 3: 功率 (Power)
+    ax3.plot(rpms, powers, label='Power (W)', color='red', linewidth=2)
+    ax3.axvline(eq_rpm, color='black', linestyle='--', alpha=0.3)
+    ax3.set_title('Power vs RPM')
+    ax3.set_xlabel('RPM')
+    ax3.set_ylabel('Power (W)')
+    ax3.grid(True, alpha=0.3)
+    ax3.legend()
 
     plt.tight_layout()
     plt.show()
