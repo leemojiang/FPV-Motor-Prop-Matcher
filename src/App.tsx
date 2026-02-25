@@ -102,8 +102,9 @@ export default function App() {
 
     const data = [];
     const lambdaData = [];
-    const maxRpm = motor.kv * v;
-    const step = maxRpm / 50;
+    const maxRpm = Math.max(1000, motor.kv * v);
+    const steps = 200; // Increased resolution
+    const step = maxRpm / steps;
 
     let equilibriumRpm = 0;
     let minDiff = Infinity;
@@ -124,7 +125,7 @@ export default function App() {
       const pElec = v * current;
       const motorEff = pElec > 0 ? (pShaftMotor / pElec) * 100 : 0;
 
-      // Propeller Calculations (Now independent of lambda for main simulation as requested)
+      // Propeller Calculations
       const tipSpeed = omega * propRadius;
       const lambda = omega > 0 ? V / tipSpeed : 0;
       
@@ -132,7 +133,7 @@ export default function App() {
       const propTorque = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * eff_cp_const;
       const propPower = propTorque * omega;
       
-      // Propeller Efficiency: eta_p = (T * V) / P_prop
+      // Propeller Efficiency
       const propEff = propPower > 0 ? (thrust * V / propPower) * 100 : 0;
 
       const diff = Math.abs(motorTorque - propTorque);
@@ -145,7 +146,7 @@ export default function App() {
         rpm: Math.round(rpm),
         motorTorque: Number(motorTorque.toFixed(4)),
         propTorque: Number(propTorque.toFixed(4)),
-        thrust: Number((thrust * 101.97).toFixed(1)), // g
+        thrust: Number((thrust * 101.97).toFixed(1)),
         efficiency: Number(Math.max(0, motorEff).toFixed(1)),
         propEff: Number(Math.min(100, propEff).toFixed(1)),
         current: Number(current.toFixed(1)),
@@ -153,25 +154,6 @@ export default function App() {
         pShaftMotor: Number(pShaftMotor.toFixed(1)),
         pProp: Number(propPower.toFixed(1)),
         lambda: Number(lambda.toFixed(3)),
-      });
-    }
-
-    // Generate specific Lambda data for the lambda chart (plotting coefficients)
-    const maxLambda = lambda0 * 1.2;
-    for (let l = 0; l <= maxLambda; l += maxLambda / 50) {
-      const ct_l = Math.max(0, eff_ct_const * (1 - l / lambda0));
-      const cp_l = Math.max(0, eff_cp_const * (1 - l / lambda0));
-      
-      // Efficiency at this lambda: eta = J * Ct / Cp * (1/2pi) or similar
-      // Simplified: eta = (T * V) / (Q * omega) = (Ct * rho * n^2 * D^4 * V) / (Cp * rho * n^2 * D^5 * n * 2pi) ...
-      // In our model: eta = (Ct * V) / (Cp * omega * R) = (Ct * lambda) / Cp
-      const eff_l = cp_l > 0 ? (ct_l * l / cp_l) * 100 : 0;
-
-      lambdaData.push({
-        lambda: Number(l.toFixed(3)),
-        ct: Number(ct_l.toFixed(4)),
-        cp: Number(cp_l.toFixed(4)),
-        efficiency: Number(Math.min(100, eff_l).toFixed(1)),
       });
     }
 
@@ -183,6 +165,7 @@ export default function App() {
     const opCurrent = Math.max(0, (v - opOmega / kv_rad) / R);
     const opThrust = 0.5 * rho * Math.pow(opTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * eff_ct_const;
     const opPower = v * opCurrent;
+    const opShaftPower = Math.max(0, (opCurrent - io) / kv_rad) * opOmega;
 
     return {
       chartData: data,
@@ -193,11 +176,12 @@ export default function App() {
       },
       operatingPoint: {
         rpm: equilibriumRpm,
-        thrust: opThrust * 101.97, // g
+        thrust: opThrust * 101.97,
         current: opCurrent,
         power: opPower,
+        shaftPower: opShaftPower,
         advanceRatio: opLambda,
-        efficiency: opPower > 0 ? ((opOmega * (opCurrent - io) / kv_rad) / opPower) * 100 : 0
+        efficiency: opPower > 0 ? (opShaftPower / opPower) * 100 : 0
       }
     };
   }, [motor, prop, env]);
@@ -379,14 +363,21 @@ export default function App() {
             />
             <MetricCard 
               label="Efficiency" 
-              value={results.operatingPoint.efficiency.toFixed(1)} 
+              value={isNaN(results.operatingPoint.efficiency) ? "---" : results.operatingPoint.efficiency.toFixed(1)} 
               unit="%" 
               icon={<Zap className="w-4 h-4" />}
               color="purple"
             />
             <MetricCard 
+              label="Power Consumption" 
+              value={isNaN(results.operatingPoint.power) ? "---" : results.operatingPoint.power.toFixed(1)} 
+              unit="W" 
+              icon={<Zap className="w-4 h-4" />}
+              color="yellow"
+            />
+            <MetricCard 
               label="Advance Ratio" 
-              value={results.operatingPoint.advanceRatio.toFixed(3)} 
+              value={isNaN(results.operatingPoint.advanceRatio) ? "---" : results.operatingPoint.advanceRatio.toFixed(3)} 
               unit="λ" 
               icon={<TrendingUp className="w-4 h-4" />}
               color="emerald"
@@ -438,6 +429,8 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="rpm" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       tickFormatter={(v) => `${v/1000}k`}
@@ -451,7 +444,9 @@ export default function App() {
                     <Legend verticalAlign="top" height={36}/>
                     <Line type="monotone" dataKey="motorTorque" name="Motor Torque" stroke="#10b981" strokeWidth={3} dot={false} animationDuration={1000} />
                     <Line type="monotone" dataKey="propTorque" name="Prop Torque" stroke="#0ea5e9" strokeWidth={3} dot={false} animationDuration={1000} />
-                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: 'Equilibrium', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
+                    {results.operatingPoint.rpm > 0 && (
+                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} label={{ value: 'Equilibrium', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
+                    )}
                   </LineChart>
                 ) : activeTab === 'thrust' ? (
                   <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
@@ -464,6 +459,8 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="rpm" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       tickFormatter={(v) => `${v/1000}k`}
@@ -471,14 +468,18 @@ export default function App() {
                     />
                     <YAxis stroke="#666" fontSize={10} label={{ value: 'Thrust (g)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
+                    {results.operatingPoint.rpm > 0 && (
+                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
+                    )}
                     <Area type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" fillOpacity={1} fill="url(#colorThrust)" strokeWidth={3} />
-                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
                   </AreaChart>
                 ) : activeTab === 'efficiency' ? (
                   <LineChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="rpm" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       tickFormatter={(v) => `${v/1000}k`}
@@ -487,7 +488,9 @@ export default function App() {
                     <YAxis stroke="#666" fontSize={10} label={{ value: 'Efficiency (%)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Line type="monotone" dataKey="efficiency" name="Motor Efficiency (%)" stroke="#a855f7" strokeWidth={3} dot={false} />
-                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
+                    {results.operatingPoint.rpm > 0 && (
+                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
+                    )}
                   </LineChart>
                 ) : activeTab === 'power' ? (
                   <AreaChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
@@ -508,6 +511,8 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="rpm" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       tickFormatter={(v) => `${v/1000}k`}
@@ -519,13 +524,17 @@ export default function App() {
                     <Area type="monotone" dataKey="pElec" name="P Elec (Input, F4)" stroke="#ef4444" fillOpacity={1} fill="url(#colorElec)" strokeWidth={2} />
                     <Area type="monotone" dataKey="pShaftMotor" name="P Shaft (Motor Out, F3)" stroke="#10b981" fillOpacity={1} fill="url(#colorShaft)" strokeWidth={2} />
                     <Area type="monotone" dataKey="pProp" name="P Prop (Absorbed)" stroke="#f59e0b" fillOpacity={1} fill="url(#colorProp)" strokeWidth={3} />
-                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
+                    {results.operatingPoint.rpm > 0 && (
+                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
+                    )}
                   </AreaChart>
                 ) : activeTab === 'prop_rpm' ? (
                   <LineChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="rpm" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       tickFormatter={(v) => `${v/1000}k`}
@@ -538,13 +547,17 @@ export default function App() {
                     <Line yAxisId="left" type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" strokeWidth={2} dot={false} />
                     <Line yAxisId="left" type="monotone" dataKey="propTorque" name="Torque (N·m * 10k)" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="5 5" />
                     <Line yAxisId="right" type="monotone" dataKey="propEff" name="Prop Eff (%)" stroke="#f43f5e" strokeWidth={3} dot={false} />
-                    <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" />
+                    {results.operatingPoint.rpm > 0 && (
+                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
+                    )}
                   </LineChart>
                 ) : (
                   <LineChart data={results.lambdaData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
                       dataKey="lambda" 
+                      type="number"
+                      domain={['auto', 'auto']}
                       stroke="#666" 
                       fontSize={10} 
                       label={{ value: 'Advance Ratio (λ)', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
@@ -556,7 +569,9 @@ export default function App() {
                     <Line yAxisId="left" type="monotone" dataKey="ct" name="Ct(λ)" stroke="#0ea5e9" strokeWidth={3} dot={false} />
                     <Line yAxisId="left" type="monotone" dataKey="cp" name="Cp(λ)" stroke="#10b981" strokeWidth={3} dot={false} strokeDasharray="5 5" />
                     <Line yAxisId="right" type="monotone" dataKey="efficiency" name="Prop Eff (%)" stroke="#f43f5e" strokeWidth={3} dot={false} />
-                    <ReferenceLine x={results.operatingPoint.advanceRatio} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: 'Operating λ', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
+                    {results.operatingPoint.advanceRatio >= 0 && (
+                      <ReferenceLine x={results.operatingPoint.advanceRatio} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} label={{ value: 'Operating λ', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
+                    )}
                   </LineChart>
                 )}
               </ResponsiveContainer>
