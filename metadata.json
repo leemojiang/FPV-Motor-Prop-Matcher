@@ -1,0 +1,5 @@
+{
+  "name": "FPV Motor-Prop Matcher",
+  "description": "A visualization tool for matching FPV drone motors and propellers based on physical models.",
+  "requestFramePermissions": []
+}
