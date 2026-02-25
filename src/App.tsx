@@ -110,8 +110,8 @@ export default function App() {
 
     // Pitch ratio for scaling
     const pitchRatio = prop.pitch / prop.diameter;
-    const base_ct = prop.ct * pitchRatio;
-    const base_cp = prop.cp * pitchRatio;
+    const eff_ct_const = prop.ct * pitchRatio;
+    const eff_cp_const = prop.cp * pitchRatio;
     const lambda0 = pitchRatio * 1.2;
 
     for (let rpm = 0; rpm <= maxRpm; rpm += step) {
@@ -124,15 +124,12 @@ export default function App() {
       const pElec = v * current;
       const motorEff = pElec > 0 ? (pShaftMotor / pElec) * 100 : 0;
 
-      // Propeller Calculations
+      // Propeller Calculations (Now independent of lambda for main simulation as requested)
       const tipSpeed = omega * propRadius;
       const lambda = omega > 0 ? V / tipSpeed : 0;
       
-      const ct_eff = Math.max(0, base_ct * (1 - lambda / lambda0));
-      const cp_eff = Math.max(0, base_cp * (1 - lambda / lambda0));
-
-      const thrust = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * ct_eff;
-      const propTorque = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * cp_eff;
+      const thrust = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * eff_ct_const;
+      const propTorque = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * eff_cp_const;
       const propPower = propTorque * omega;
       
       // Propeller Efficiency: eta_p = (T * V) / P_prop
@@ -159,27 +156,21 @@ export default function App() {
       });
     }
 
-    // Generate specific Lambda data for the lambda chart
+    // Generate specific Lambda data for the lambda chart (plotting coefficients)
     const maxLambda = lambda0 * 1.2;
     for (let l = 0; l <= maxLambda; l += maxLambda / 50) {
-      const ct_l = Math.max(0, base_ct * (1 - l / lambda0));
-      const cp_l = Math.max(0, base_cp * (1 - l / lambda0));
+      const ct_l = Math.max(0, eff_ct_const * (1 - l / lambda0));
+      const cp_l = Math.max(0, eff_cp_const * (1 - l / lambda0));
       
-      // We need a reference omega to get absolute values, or just plot coefficients
-      // Let's use the equilibrium omega as reference for absolute values on lambda chart
-      const refOmega = rpmToRadS(equilibriumRpm || maxRpm / 2);
-      const refTipSpeed = refOmega * propRadius;
-      
-      const t_l = 0.5 * rho * Math.pow(refTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * ct_l;
-      const q_l = 0.5 * rho * Math.pow(refTipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * cp_l;
-      const p_l = q_l * refOmega;
-      const v_l = l * refTipSpeed;
-      const eff_l = p_l > 0 ? (t_l * v_l / p_l) * 100 : 0;
+      // Efficiency at this lambda: eta = J * Ct / Cp * (1/2pi) or similar
+      // Simplified: eta = (T * V) / (Q * omega) = (Ct * rho * n^2 * D^4 * V) / (Cp * rho * n^2 * D^5 * n * 2pi) ...
+      // In our model: eta = (Ct * V) / (Cp * omega * R) = (Ct * lambda) / Cp
+      const eff_l = cp_l > 0 ? (ct_l * l / cp_l) * 100 : 0;
 
       lambdaData.push({
         lambda: Number(l.toFixed(3)),
-        thrust: Number((t_l * 101.97).toFixed(1)),
-        torque: Number(q_l.toFixed(4)),
+        ct: Number(ct_l.toFixed(4)),
+        cp: Number(cp_l.toFixed(4)),
         efficiency: Number(Math.min(100, eff_l).toFixed(1)),
       });
     }
@@ -188,15 +179,18 @@ export default function App() {
     const opOmega = rpmToRadS(equilibriumRpm);
     const opTipSpeed = opOmega * propRadius;
     const opLambda = opOmega > 0 ? V / opTipSpeed : 0;
-    const opCtEff = Math.max(0, (prop.ct * pitchRatio) * (1 - opLambda / lambda0));
     
     const opCurrent = Math.max(0, (v - opOmega / kv_rad) / R);
-    const opThrust = 0.5 * rho * Math.pow(opTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * opCtEff;
+    const opThrust = 0.5 * rho * Math.pow(opTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * eff_ct_const;
     const opPower = v * opCurrent;
 
     return {
       chartData: data,
       lambdaData: lambdaData,
+      effectiveCoeffs: {
+        ct: eff_ct_const,
+        cp: eff_cp_const
+      },
       operatingPoint: {
         rpm: equilibriumRpm,
         thrust: opThrust * 101.97, // g
@@ -397,6 +391,20 @@ export default function App() {
               icon={<TrendingUp className="w-4 h-4" />}
               color="emerald"
             />
+            <MetricCard 
+              label="Effective Ct" 
+              value={results.effectiveCoeffs.ct.toFixed(4)} 
+              unit="" 
+              icon={<Wind className="w-4 h-4" />}
+              color="sky"
+            />
+            <MetricCard 
+              label="Effective Cp" 
+              value={results.effectiveCoeffs.cp.toFixed(4)} 
+              unit="" 
+              icon={<Zap className="w-4 h-4" />}
+              color="yellow"
+            />
           </div>
 
           {/* Charts */}
@@ -541,12 +549,12 @@ export default function App() {
                       fontSize={10} 
                       label={{ value: 'Advance Ratio (λ)', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
                     />
-                    <YAxis yAxisId="left" stroke="#666" fontSize={10} label={{ value: 'Thrust (g) / Torque', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
+                    <YAxis yAxisId="left" stroke="#666" fontSize={10} label={{ value: 'Coefficients (Ct, Cp)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
                     <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} label={{ value: 'Prop Efficiency (%)', angle: 90, position: 'insideRight', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Legend verticalAlign="top" height={36}/>
-                    <Line yAxisId="left" type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                    <Line yAxisId="left" type="monotone" dataKey="torque" name="Torque (N·m)" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                    <Line yAxisId="left" type="monotone" dataKey="ct" name="Ct(λ)" stroke="#0ea5e9" strokeWidth={3} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="cp" name="Cp(λ)" stroke="#10b981" strokeWidth={3} dot={false} strokeDasharray="5 5" />
                     <Line yAxisId="right" type="monotone" dataKey="efficiency" name="Prop Eff (%)" stroke="#f43f5e" strokeWidth={3} dot={false} />
                     <ReferenceLine x={results.operatingPoint.advanceRatio} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: 'Operating λ', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
                   </LineChart>

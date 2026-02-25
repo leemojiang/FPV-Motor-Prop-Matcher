@@ -32,8 +32,12 @@ def simulate_fpv_dynamics():
     prop_torques = []
     thrusts_g = []
     efficiencies = []
+    prop_efficiencies = []
     currents = []
-    powers = []
+    powers_elec = []
+    powers_shaft = []
+    powers_prop = []
+    lambdas = []
 
     # --- 4. 核心计算循环 (Core Calculation Loop) ---
     for omega in omegas:
@@ -59,19 +63,17 @@ def simulate_fpv_dynamics():
         # 进气比修正与 Pitch 影响
         # pitchRatio = P/D. 
         pitch_ratio = pitch_in / diameter_in
-        base_ct = ct_static * pitch_ratio
-        base_cp = cp_static * pitch_ratio
+        eff_ct_const = ct_static * pitch_ratio
+        eff_cp_const = cp_static * pitch_ratio
 
         # lambda_0 is roughly pitch/diameter * factor
         lambda0 = pitch_ratio * 1.2
-        ct_eff = max(0, base_ct * (1 - advance_ratio / lambda0))
-        cp_eff = max(0, base_cp * (1 - advance_ratio / lambda0))
-
+        
         # (15) T = 0.5 * rho * (Omega * R)^2 * pi * R^2 * Ct
-        thrust_n = 0.5 * rho * (tip_speed**2) * np.pi * (prop_radius**2) * ct_eff
+        thrust_n = 0.5 * rho * (tip_speed**2) * np.pi * (prop_radius**2) * eff_ct_const
         # (16) Q = 0.5 * rho * (Omega * R)^2 * pi * R^3 * Cp
-        q_prop = 0.5 * rho * (tip_speed**2) * np.pi * (prop_radius**3) * cp_eff
-
+        q_prop = 0.5 * rho * (tip_speed**2) * np.pi * (prop_radius**3) * eff_cp_const
+        
         motor_torques.append(qm)
         prop_torques.append(q_prop)
         thrusts_g.append(thrust_n * 101.97) # N to grams
@@ -112,6 +114,8 @@ def simulate_fpv_dynamics():
     print(f"  P Shaft (Out):  {eq_p_shaft:.1f} W")
     print(f"  P Prop (Abs):   {eq_p_prop:.1f} W")
     print(f"  Advance Ratio:  {eq_lambda:.3f}")
+    print(f"  Effective Ct:   {eff_ct_const:.4f}")
+    print(f"  Effective Cp:   {eff_cp_const:.4f}")
 
     # --- 7. 绘图 (Plotting) ---
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
@@ -150,16 +154,22 @@ def simulate_fpv_dynamics():
     ax3.legend(loc='upper left')
     ax3_eff.legend(loc='upper right')
 
-    # 图表 4: 螺旋桨特性 vs Lambda (Propeller Characteristics vs Lambda)
-    # Filter out very high lambdas for better visualization
-    valid_mask = np.array(lambdas) < (pitch_in/diameter_in * 1.5)
-    ax4.plot(np.array(lambdas)[valid_mask], np.array(thrusts_g)[valid_mask], label='Thrust (g)', color='blue')
+    # 图表 4: 螺旋桨系数 vs Lambda (Propeller Coefficients vs Lambda)
+    l_range = np.linspace(0, lambda0 * 1.2, 100)
+    ct_l = np.maximum(0, eff_ct_const * (1 - l_range / lambda0))
+    cp_l = np.maximum(0, eff_cp_const * (1 - l_range / lambda0))
+    # Efficiency at this lambda: eta = (Ct * lambda) / Cp
+    eff_l = np.where(cp_l > 0, (ct_l * l_range / cp_l) * 100, 0)
+    eff_l = np.minimum(100, eff_l)
+
+    ax4.plot(l_range, ct_l, label='Ct(λ)', color='blue', linewidth=2)
+    ax4.plot(l_range, cp_l, label='Cp(λ)', color='green', linewidth=2, linestyle='--')
     ax4_eff = ax4.twinx()
-    ax4_eff.plot(np.array(lambdas)[valid_mask], np.array(prop_efficiencies)[valid_mask], label='Prop Eff (%)', color='purple', linestyle='--')
+    ax4_eff.plot(l_range, eff_l, label='Prop Eff (%)', color='purple', linestyle=':')
     ax4.axvline(eq_lambda, color='red', linestyle=':', label=f'Operating λ={eq_lambda:.3f}')
-    ax4.set_title('Propeller Characteristics vs Advance Ratio (λ)')
+    ax4.set_title('Propeller Coefficients vs Advance Ratio (λ)')
     ax4.set_xlabel('Advance Ratio (λ)')
-    ax4.set_ylabel('Thrust (g)')
+    ax4.set_ylabel('Coefficients (Ct, Cp)')
     ax4_eff.set_ylabel('Efficiency (%)')
     ax4.grid(True, alpha=0.3)
     ax4.legend(loc='upper left')
