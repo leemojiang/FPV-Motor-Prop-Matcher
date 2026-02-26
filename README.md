@@ -107,5 +107,8 @@ python fpv_math_check.py
 
 本项目采用 [Apache-2.0](LICENSE) 协议开源。
 
+## Reference
+[Lecture Notes from MIT](https://web.mit.edu/drela/Public/web/qprop/motorprop.pdf)
+
 ---
 *Developed with ❤️ for the FPV Community.*
