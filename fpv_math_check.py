@@ -102,7 +102,7 @@ def simulate_fpv_dynamics():
     print(f"Operating Point (平衡点 @ {v_batt}V):")
     if eq_res:
         rpm_actual = eq_res[0]
-        rpm_no_load = v_batt * motor_kv
+        rpm_no_load = v_batt * kv_rpm
         load_pct = (rpm_actual / rpm_no_load * 100) if rpm_no_load > 0 else 0
         
         print(f"  RPM:            {rpm_actual:.0f}")
@@ -159,9 +159,6 @@ def simulate_fpv_dynamics():
         ax4.legend(loc='upper left')
         ax4_p.legend(loc='upper right')
         ax4.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.show()
 
     plt.tight_layout()
     plt.show()

@@ -116,9 +116,6 @@ export default function App() {
     const steps = 200;
     const step = maxRpm / steps;
 
-    let equilibriumRpm = 0;
-    let minDiff = Infinity;
-
     // 1. RPM Sweep for current voltage
     for (let rpm = 0; rpm <= maxRpm; rpm += step) {
       const omega = rpmToRadS(rpm);
@@ -131,12 +128,6 @@ export default function App() {
       const thrust = k_thrust * Math.pow(omega, 2);
       const propTorque = k_prop * Math.pow(omega, 2);
       const propPower = propTorque * omega;
-      
-      const diff = Math.abs(motorTorque - propTorque);
-      if (diff < minDiff && rpm > 0) {
-        minDiff = diff;
-        equilibriumRpm = rpm;
-      }
 
       data.push({
         rpm: Math.round(rpm),
@@ -187,12 +178,14 @@ export default function App() {
       }
     }
 
-    // Calculate exact operating point using the best RPM found in loop
+    // Calculate exact operating point using the analytical solver (quadratic solution)
+    const eqResult = solveEquilibrium(v);
+    const equilibriumRpm = eqResult ? eqResult.rpm : 0;
     const opOmega = rpmToRadS(equilibriumRpm);
-    const opCurrent = Math.max(0, (v - opOmega / kv_rad) / R);
-    const opThrust = k_thrust * Math.pow(opOmega, 2);
-    const opPower = v * opCurrent;
-    const opShaftPower = Math.max(0, (opCurrent - io) / kv_rad) * opOmega;
+    const opCurrent = eqResult ? eqResult.current : 0;
+    const opThrust = eqResult ? eqResult.thrust : 0;
+    const opPower = eqResult ? eqResult.pElec : 0;
+    const opShaftPower = eqResult ? Math.max(0, (opCurrent - io) / kv_rad) * opOmega : 0;
 
     return {
       chartData: data,
@@ -592,7 +585,7 @@ export default function App() {
                 </li>
                 <li className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-zinc-400">Operating Load</span>
-                  <span className="font-mono">{((results.operatingPoint.rpm / (motor.kv * env.voltage)) * 100).toFixed(1)}%</span>
+                  <span className="font-mono">{(motor.kv * env.voltage) > 0 ? ((results.operatingPoint.rpm / (motor.kv * env.voltage)) * 100).toFixed(1) : "---"}%</span>
                 </li>
                 <li className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-zinc-400">Power Consumption</span>
@@ -600,7 +593,7 @@ export default function App() {
                 </li>
                 <li className="flex justify-between">
                   <span className="text-zinc-400">Thrust-to-Power</span>
-                  <span className="font-mono text-emerald-400">{(results.operatingPoint.thrust / results.operatingPoint.power).toFixed(2)} g/W</span>
+                  <span className="font-mono text-emerald-400">{results.operatingPoint.power > 0 ? (results.operatingPoint.thrust / results.operatingPoint.power).toFixed(2) : "---"} g/W</span>
                 </li>
               </ul>
             </div>
