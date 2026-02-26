@@ -25,12 +25,13 @@
 ### 1. 电机模型 (Motor Model)
 - **电机扭矩 (Formula 1)**: $Q_m = \frac{i - i_o}{K_v}$
 - **转速 (Formula 2)**: $\Omega = (v - iR)K_v$
+- **电流 (Formula 6)**: $i = \frac{v - \Omega/K_v}{R}$
 - **轴输出功率 (Formula 3)**: $P_{shaft} = Q_m \Omega = (i - i_o)(v - iR)$
 - **输入电功率 (Formula 4)**: $P_{elec} = v \cdot i$
 - **电机效率 (Formula 5)**: $\eta_m = \frac{P_{shaft}}{P_{elec}} = (1 - \frac{i_o}{i})(1 - \frac{iR}{v})$
 
 ### 2. 螺旋桨模型 (Propeller Model - Simplified)
-螺旋桨的推力和扭矩由无量纲系数 $C_T$ 和 $C_P$ 决定。根据您的需求，我们移除了进气比 $\lambda$ 的动态修正，改用基于桨距修正的有效系数：
+螺旋桨的推力和扭矩由无量纲系数 $C_T$ 和 $C_P$ 决定。因为FPV一般工作在 $\lambda \approx 0$ 的附近,所以我们移除了进气比 $\lambda$ 的动态修正，改用基于桨距修正的有效系数 (事实上这两个系数受到$\lambda$和螺旋桨几何因素影响,并没有准确的解析公式,这个修正只是为了说明大概趋势,请确保$C_{T,eff},C_{P,eff}$与实际测量值接近.) ：
 - **有效系数**:
   - $C_{T,eff} = C_{T,static} \times (Pitch / Diameter)$
   - $C_{P,eff} = C_{P,static} \times (Pitch / Diameter)$
