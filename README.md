@@ -29,27 +29,29 @@
 - **输入电功率 (Formula 4)**: $P_{elec} = v \cdot i$
 - **电机效率 (Formula 5)**: $\eta_m = \frac{P_{shaft}}{P_{elec}} = (1 - \frac{i_o}{i})(1 - \frac{iR}{v})$
 
-### 2. 螺旋桨模型 (Propeller Model)
-螺旋桨的推力和扭矩由无量纲系数 $C_T$ 和 $C_P$ 决定，并受进气比 $\lambda$ 影响：
-- **进气比 (Formula 14)**: $\lambda = \frac{V}{\Omega R}$
-- **推力 (Formula 15)**: $T = \frac{1}{2} \rho (\Omega R)^2 \pi R^2 C_T(\lambda)$
-- **扭矩 (Formula 16)**: $Q = \frac{1}{2} \rho (\Omega R)^2 \pi R^3 C_P(\lambda)$
+### 2. 螺旋桨模型 (Propeller Model - Simplified)
+螺旋桨的推力和扭矩由无量纲系数 $C_T$ 和 $C_P$ 决定。根据您的需求，我们移除了进气比 $\lambda$ 的动态修正，改用基于桨距修正的有效系数：
+- **有效系数**:
+  - $C_{T,eff} = C_{T,static} \times (Pitch / Diameter)$
+  - $C_{P,eff} = C_{P,static} \times (Pitch / Diameter)$
+- **推力 (Formula 15)**: $T = \frac{1}{2} \rho (\Omega R)^2 \pi R^2 C_{T,eff}$
+- **扭矩 (Formula 16)**: $Q = \frac{1}{2} \rho (\Omega R)^2 \pi R^3 C_{P,eff}$
 - **螺旋桨吸收功率 (Propeller Power)**: $P_{prop} = Q \cdot \Omega$
-- **螺旋桨效率 (Propeller Efficiency)**: $\eta_p = \frac{T \cdot V}{P_{prop}}$
-
-> **注**：在本项目中，我们引入了 $Pitch/Diameter$（桨径比）对基础系数的修正，以更真实地模拟不同螺距桨叶的负载差异。
 
 ### 3. 匹配与平衡 (Matching)
-- **平衡条件 (Formula 17)**: 寻找 $\Omega$ 使得 $Q_m(\Omega, v) = Q(\Omega, V)$。此时的转速即为实际运行转速。
+- **平衡条件 (Formula 17)**: 寻找 $\Omega$ 使得 $Q_m(\Omega, v) = Q(\Omega)$。
+- **运行负载率 (Operating Load)**: 
+  $$\text{Operating Load} = \frac{\Omega_{actual}}{\Omega_{no-load}} \times 100\% = \frac{\Omega_{actual}}{v \cdot K_v} \times 100\%$$
+  该指标反映了电机在当前负载下的转速跌落。通常 70%-85% 为理想区间，低于 60% 说明负载过重，电机发热会显著增加。
+- **解析解**: 系统通过求解二次方程 $a\Omega^2 + b\Omega + c = 0$ 直接获取精确的平衡转速。
 
 ## 📊 图表说明
 
 - **Torque**: 展示电机输出扭矩与螺旋桨负载扭矩的交点（平衡点）。
 - **Thrust**: 随转速变化的推力输出。
 - **Efficiency**: 电机转换效率（电能转机械能）。
-- **Power**: 同时绘制 **P Elec (输入电功率, F4)**、**P Shaft (电机轴输出功率, F3)** 与 **P Prop (螺旋桨吸收功率)**，展示能量损耗。
-- **Prop RPM**: 螺旋桨特性随转速的变化（推力、扭矩、螺旋桨效率）。
-- **Prop Lambda**: 螺旋桨特性随进气比 $\lambda$ 的变化，展示螺旋桨在不同飞行速度下的性能包线。
+- **Power**: 同时绘制 **P Elec (输入电功率)**、**P Shaft (电机轴输出功率)** 与 **P Prop (螺旋桨吸收功率)**。
+- **Voltage Response**: **动态响应分析**。展示随电池电压（0V - 30V+）变化的平衡转速、推力、电流、功率及效率曲线。
 
 ## 🛠️ 技术栈
 

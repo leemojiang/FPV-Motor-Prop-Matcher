@@ -87,7 +87,7 @@ export default function App() {
   const [motor, setMotor] = useState<MotorParams>(PRESETS.freestyle6s.motor);
   const [prop, setProp] = useState<PropParams>(PRESETS.freestyle6s.prop);
   const [env, setEnv] = useState<EnvironmentParams>(PRESETS.freestyle6s.env);
-  const [activeTab, setActiveTab] = useState<'torque' | 'thrust' | 'efficiency' | 'power' | 'prop_rpm' | 'prop_lambda'>('torque');
+  const [activeTab, setActiveTab] = useState<'torque' | 'thrust' | 'efficiency' | 'power' | 'voltage_response'>('torque');
 
   // --- Calculations ---
 
@@ -100,42 +100,38 @@ export default function App() {
     const propRadius = inchToMeter(prop.diameter) / 2;
     const V = env.flightVelocity;
 
+    // Effective coefficients (Pitch scaled)
+    const pitchRatio = prop.pitch / prop.diameter;
+    const eff_ct = prop.ct * pitchRatio;
+    const eff_cp = prop.cp * pitchRatio;
+
+    // Propeller constant k where Torque = k * omega^2
+    // Q = 0.5 * rho * (omega * R)^2 * pi * R^3 * Cp = (0.5 * rho * pi * R^5 * Cp) * omega^2
+    const k_prop = 0.5 * rho * Math.PI * Math.pow(propRadius, 5) * eff_cp;
+    const k_thrust = 0.5 * rho * Math.PI * Math.pow(propRadius, 4) * eff_ct;
+
     const data = [];
-    const lambdaData = [];
+    const voltageData = [];
     const maxRpm = Math.max(1000, motor.kv * v);
-    const steps = 200; // Increased resolution
+    const steps = 200;
     const step = maxRpm / steps;
 
     let equilibriumRpm = 0;
     let minDiff = Infinity;
 
-    // Pitch ratio for scaling
-    const pitchRatio = prop.pitch / prop.diameter;
-    const eff_ct_const = prop.ct * pitchRatio;
-    const eff_cp_const = prop.cp * pitchRatio;
-    const lambda0 = pitchRatio * 1.2;
-
+    // 1. RPM Sweep for current voltage
     for (let rpm = 0; rpm <= maxRpm; rpm += step) {
       const omega = rpmToRadS(rpm);
-      
-      // Motor Calculations
       const current = Math.max(0, (v - omega / kv_rad) / R);
       const motorTorque = Math.max(0, (current - io) / kv_rad);
       const pShaftMotor = motorTorque * omega;
       const pElec = v * current;
       const motorEff = pElec > 0 ? (pShaftMotor / pElec) * 100 : 0;
 
-      // Propeller Calculations
-      const tipSpeed = omega * propRadius;
-      const lambda = omega > 0 ? V / tipSpeed : 0;
-      
-      const thrust = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * eff_ct_const;
-      const propTorque = 0.5 * rho * Math.pow(tipSpeed, 2) * Math.PI * Math.pow(propRadius, 3) * eff_cp_const;
+      const thrust = k_thrust * Math.pow(omega, 2);
+      const propTorque = k_prop * Math.pow(omega, 2);
       const propPower = propTorque * omega;
       
-      // Propeller Efficiency
-      const propEff = propPower > 0 ? (thrust * V / propPower) * 100 : 0;
-
       const diff = Math.abs(motorTorque - propTorque);
       if (diff < minDiff && rpm > 0) {
         minDiff = diff;
@@ -148,40 +144,67 @@ export default function App() {
         propTorque: Number(propTorque.toFixed(4)),
         thrust: Number((thrust * 101.97).toFixed(1)),
         efficiency: Number(Math.max(0, motorEff).toFixed(1)),
-        propEff: Number(Math.min(100, propEff).toFixed(1)),
         current: Number(current.toFixed(1)),
         pElec: Number(pElec.toFixed(1)),
         pShaftMotor: Number(pShaftMotor.toFixed(1)),
         pProp: Number(propPower.toFixed(1)),
-        lambda: Number(lambda.toFixed(3)),
       });
     }
 
-    // Calculate exact operating point
+    // 2. Analytical Equilibrium Solver (Used for chart sweeping)
+    const solveEquilibrium = (volts: number) => {
+      const a = k_prop;
+      const b = 1 / (R * Math.pow(kv_rad, 2));
+      const c = (io / kv_rad) - (volts / (R * kv_rad));
+      const discriminant = Math.pow(b, 2) - 4 * a * c;
+      if (discriminant < 0) return null;
+      const omega = (-b + Math.sqrt(discriminant)) / (2 * a);
+      if (omega < 0) return null;
+      const rpm = (omega * 60) / (2 * Math.PI);
+      const current = Math.max(0, (volts - omega / kv_rad) / R);
+      const thrust = k_thrust * Math.pow(omega, 2);
+      const torque = k_prop * Math.pow(omega, 2);
+      const pElec = volts * current;
+      const pShaft = Math.max(0, (current - io) / kv_rad) * omega;
+      const eff = pElec > 0 ? (pShaft / pElec) * 100 : 0;
+      return { rpm, thrust, current, torque, pElec, eff };
+    };
+
+    // 3. Voltage Sweep
+    const maxV = Math.max(30, v * 1.2);
+    for (let volts = 0; volts <= maxV; volts += 0.5) {
+      const res = solveEquilibrium(volts);
+      if (res) {
+        voltageData.push({
+          voltage: Number(volts.toFixed(1)),
+          rpm: Math.round(res.rpm),
+          thrust: Number((res.thrust * 101.97).toFixed(1)),
+          current: Number(res.current.toFixed(1)),
+          torque: Number(res.torque.toFixed(4)),
+          power: Number(res.pElec.toFixed(1)),
+          efficiency: Number(res.eff.toFixed(1)),
+        });
+      }
+    }
+
+    // Calculate exact operating point using the best RPM found in loop
     const opOmega = rpmToRadS(equilibriumRpm);
-    const opTipSpeed = opOmega * propRadius;
-    const opLambda = opOmega > 0 ? V / opTipSpeed : 0;
-    
     const opCurrent = Math.max(0, (v - opOmega / kv_rad) / R);
-    const opThrust = 0.5 * rho * Math.pow(opTipSpeed, 2) * Math.PI * Math.pow(propRadius, 2) * eff_ct_const;
+    const opThrust = k_thrust * Math.pow(opOmega, 2);
     const opPower = v * opCurrent;
     const opShaftPower = Math.max(0, (opCurrent - io) / kv_rad) * opOmega;
 
     return {
       chartData: data,
-      lambdaData: lambdaData,
-      effectiveCoeffs: {
-        ct: eff_ct_const,
-        cp: eff_cp_const
-      },
+      voltageData: voltageData,
+      effectiveCoeffs: { ct: eff_ct, cp: eff_cp },
       operatingPoint: {
         rpm: equilibriumRpm,
         thrust: opThrust * 101.97,
         current: opCurrent,
         power: opPower,
-        shaftPower: opShaftPower,
-        advanceRatio: opLambda,
-        efficiency: opPower > 0 ? (opShaftPower / opPower) * 100 : 0
+        efficiency: opPower > 0 ? (opShaftPower / opPower) * 100 : 0,
+        advanceRatio: equilibriumRpm > 0 ? V / (opOmega * propRadius) : 0
       }
     };
   }, [motor, prop, env]);
@@ -402,7 +425,7 @@ export default function App() {
           <div className="bg-zinc-900/50 border border-white/5 rounded-3xl p-8">
             <div className="flex items-center justify-between mb-8 overflow-x-auto">
               <div className="flex gap-2 min-w-max">
-                {(['torque', 'thrust', 'efficiency', 'power', 'prop_rpm', 'prop_lambda'] as const).map((tab) => (
+                {(['torque', 'thrust', 'efficiency', 'power', 'voltage_response'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -528,50 +551,27 @@ export default function App() {
                       <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
                     )}
                   </AreaChart>
-                ) : activeTab === 'prop_rpm' ? (
-                  <LineChart data={results.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                    <XAxis 
-                      dataKey="rpm" 
-                      type="number"
-                      domain={['auto', 'auto']}
-                      stroke="#666" 
-                      fontSize={10} 
-                      tickFormatter={(v) => `${v/1000}k`}
-                      label={{ value: 'RPM', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
-                    />
-                    <YAxis yAxisId="left" stroke="#666" fontSize={10} label={{ value: 'Thrust (g) / Torque (N·m * 10k)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
-                    <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} label={{ value: 'Prop Efficiency (%)', angle: 90, position: 'insideRight', fill: '#666', fontSize: 10 }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
-                    <Legend verticalAlign="top" height={36}/>
-                    <Line yAxisId="left" type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                    <Line yAxisId="left" type="monotone" dataKey="propTorque" name="Torque (N·m * 10k)" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                    <Line yAxisId="right" type="monotone" dataKey="propEff" name="Prop Eff (%)" stroke="#f43f5e" strokeWidth={3} dot={false} />
-                    {results.operatingPoint.rpm > 0 && (
-                      <ReferenceLine x={results.operatingPoint.rpm} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} />
-                    )}
-                  </LineChart>
                 ) : (
-                  <LineChart data={results.lambdaData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                  <LineChart data={results.voltageData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                     <XAxis 
-                      dataKey="lambda" 
+                      dataKey="voltage" 
                       type="number"
-                      domain={['auto', 'auto']}
+                      domain={[0, 'auto']}
                       stroke="#666" 
                       fontSize={10} 
-                      label={{ value: 'Advance Ratio (λ)', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
+                      label={{ value: 'Voltage (V)', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 10 }}
                     />
-                    <YAxis yAxisId="left" stroke="#666" fontSize={10} label={{ value: 'Coefficients (Ct, Cp)', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
-                    <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} label={{ value: 'Prop Efficiency (%)', angle: 90, position: 'insideRight', fill: '#666', fontSize: 10 }} />
+                    <YAxis yAxisId="left" stroke="#666" fontSize={10} label={{ value: 'RPM / Thrust / Power', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 10 }} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} label={{ value: 'Current / Efficiency / Torque', angle: 90, position: 'insideRight', fill: '#666', fontSize: 10 }} />
                     <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '12px' }} />
                     <Legend verticalAlign="top" height={36}/>
-                    <Line yAxisId="left" type="monotone" dataKey="ct" name="Ct(λ)" stroke="#0ea5e9" strokeWidth={3} dot={false} />
-                    <Line yAxisId="left" type="monotone" dataKey="cp" name="Cp(λ)" stroke="#10b981" strokeWidth={3} dot={false} strokeDasharray="5 5" />
-                    <Line yAxisId="right" type="monotone" dataKey="efficiency" name="Prop Eff (%)" stroke="#f43f5e" strokeWidth={3} dot={false} />
-                    {results.operatingPoint.advanceRatio >= 0 && (
-                      <ReferenceLine x={results.operatingPoint.advanceRatio} stroke="#f59e0b" strokeDasharray="5 5" isFront={true} label={{ value: 'Operating λ', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
-                    )}
+                    <Line yAxisId="left" type="monotone" dataKey="rpm" name="RPM" stroke="#10b981" strokeWidth={2} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="thrust" name="Thrust (g)" stroke="#0ea5e9" strokeWidth={2} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="power" name="Power (W)" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="current" name="Current (A)" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="efficiency" name="Efficiency (%)" stroke="#a855f7" strokeWidth={2} dot={false} />
+                    <ReferenceLine x={env.voltage} stroke="#fff" strokeDasharray="5 5" isFront={true} label={{ value: 'Current V', fill: '#fff', fontSize: 10, position: 'top' }} />
                   </LineChart>
                 )}
               </ResponsiveContainer>
