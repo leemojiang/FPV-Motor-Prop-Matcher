@@ -618,12 +618,12 @@ export default function App() {
       <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-white/5">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-zinc-500 text-xs font-mono">
-            © 2026 FPV DYNAMICS LAB. ALL RIGHTS RESERVED.
+            © 2026 leemojiang. ALL RIGHTS RESERVED.
           </div>
           <div className="flex gap-8">
-            <a href="#" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Documentation</a>
-            <a href="#" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Github</a>
-            <a href="#" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Support</a>
+            {/* <a href="#" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Documentation</a> */}
+            <a href="https://github.com/leemojiang/FPV-Motor-Prop-Matcher" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Github</a>
+            {/* <a href="#" className="text-zinc-500 hover:text-white text-xs uppercase tracking-widest font-bold transition-colors">Support</a> */}
           </div>
         </div>
       </footer>
